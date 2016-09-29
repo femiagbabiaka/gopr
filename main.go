@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -64,7 +67,11 @@ func main() {
 
 	res := pr.pullRequest()
 
-	os.Exit(0)
+	if res {
+		os.Exit(0)
+	}
+
+	os.Exit(1)
 }
 
 func generateTargetRepositoryInfo(tarRep string) TargetRepositoryInfo {
@@ -81,15 +88,38 @@ func (r TargetRepositoryInfo) createRequestURL() string {
 func (p PullRequest) pullRequest() bool {
 	client := &http.Client{Timeout: 0}
 
+	requestBody, err := json.Marshal(p)
+
+	req, err := http.NewRequest("POST", fmt.Sprintf("https://api.github.com%s", p.requestURL), bytes.NewBuffer(requestBody))
+	//TODO: Set Headers here, read auth token and OAuth from Environment variables.
+
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	requestBody := json.Marshal(p)
+	resp, err := client.Do(req)
 
-	req, err := http.NewRequest("POST", fmt.Sprintf("https://api.github.com%s", p.RequestURL), bytes.NewBuffer(requestBody))
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	//TODO: Set Headers here, read auth token and OAuth from Environment variables.
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
+
+	body, err := ioutil.ReadAll(resp.Body)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if body != nil {
+		return true
+	}
+
+	return false
 }
 
 func currentBranch() string {
@@ -98,5 +128,5 @@ func currentBranch() string {
 		log.Fatal(err)
 		return ""
 	}
-	return out
+	return string(out[:])
 }
